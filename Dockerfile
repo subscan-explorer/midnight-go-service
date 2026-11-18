@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Stage 1: Build the Go application
 FROM golang:1.26.10 AS builder
 
@@ -56,7 +58,8 @@ RUN mkdir -p /home/node/.compact /app/tmp /app/static/verified \
 USER node
 ENV HOME=/home/node
 # Bake historical compilers plus Mainnet/Preview and Stagenet Ledger 9 compilers.
-RUN compact update 0.28.0 && compact update 0.29.0 && compact update 0.30.0 && compact update 0.31.0 && compact update 0.35.0 && compact update 0.36.0 && compact update 0.31.1
+RUN --mount=type=secret,id=github_token,env=GITHUB_TOKEN \
+    compact update 0.28.0 && compact update 0.29.0 && compact update 0.30.0 && compact update 0.31.0 && compact update 0.35.0 && compact update 0.36.0 && compact update 0.31.1
 
 # Expose the application port (if applicable)
 EXPOSE 8080
