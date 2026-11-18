@@ -35,6 +35,8 @@ jobs:
         run: npx --yes yarn@1.22.22 install --frozen-lockfile --ignore-scripts --non-interactive
       - run: npm ci
       - name: Install regression compilers
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           sh compact-installer.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -90,6 +92,8 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.image.outputs.tag }}
+          secrets: |
+            "github_token=${{ github.token }}"
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
