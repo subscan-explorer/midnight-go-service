@@ -1,0 +1,12 @@
+// Generated public state reader; compiled contract files are preserved unchanged.
+import * as Contract from '{{ .ContractImportPath }}/contract/index.js';
+import { readContractState, stateResult, compiledLedger, replacer } from '{{ .StateReaderPath }}';
+
+try {
+    const state = await readContractState('{{ .ContractAddress }}', process.argv[2]);
+    const ledger = await compiledLedger(new URL('{{ .ContractImportPath }}/contract/index.js', import.meta.url), Contract.ledger);
+    console.log(JSON.stringify(stateResult(state, ledger), replacer));
+} catch {
+    console.error('Contract public state read failed');
+    process.exitCode = 1;
+}

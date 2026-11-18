@@ -1,0 +1,6 @@
+{
+  "contracts":{
+    "count.compact":"// This file is part of midnightntwrk/example-counter.\n// Copyright (C) 2025 Midnight Foundation\n// SPDX-License-Identifier: Apache-2.0\n// Licensed under the Apache License, Version 2.0 (the \"License\");\n// You may not use this file except in compliance with the License.\n// You may obtain a copy of the License at\n//\n// http://www.apache.org/licenses/LICENSE-2.0\n//\n// Unless required by applicable law or agreed to in writing, software\n// distributed under the License is distributed on an \"AS IS\" BASIS,\n// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n// See the License for the specific language governing permissions and\n// limitations under the License.\n\npragma language_version >= 0.20;\n\nimport CompactStandardLibrary;\n\n// public state\nexport ledger round: Counter;\n\n// transition function changing public state\nexport circuit increment(): [] {\n  round.increment(1);\n}\n"
+  },
+  "entry-file":"count.compact"
+}

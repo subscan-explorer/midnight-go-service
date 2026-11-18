@@ -1,0 +1,12 @@
+pragma language_version 0.28;
+import CompactStandardLibrary;
+export ledger values: MerkleTree<4, Field>;
+export ledger hashes: MerkleTree<4, Field>;
+export ledger history: HistoricMerkleTree<4, Field>;
+constructor() {}
+export circuit insert(value: Field, hash: Bytes<32>): [] {
+  values.insert(disclose(value));
+  hashes.insertHash(disclose(hash));
+  history.insert(disclose(value));
+}
+export circuit clearHistory(): [] { history.resetHistory(); }
