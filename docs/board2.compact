@@ -1,0 +1,36 @@
+pragma language_version >= 0.16 && <= 0.19;
+
+import CompactStandardLibrary;
+
+enum State {
+  VACANT,
+  OCCUPIED
+}
+
+struct NumberAnd {
+  num: Uint<32>;
+  item: Uint<32>;
+}
+
+export ledger state: State;
+
+export ledger message: Maybe<Opaque<"string">>;
+
+export ledger sequence: Counter;
+
+export ledger owner: Bytes<32>;
+
+
+export circuit takeDown(): Opaque<"string"> {
+  assert(state == State.OCCUPIED, "Attempted to take down post from an empty board");
+  assert(owner == publicKey(localSecretKey(), sequence as Field as Bytes<32>), "Attempted to take down post, but not the current owner");
+  const formerMsg = message.value;
+  state = State.VACANT;
+  sequence.increment(1);
+  message = none<Opaque<"string">>();
+  return formerMsg;
+}
+
+export circuit insert(item: Field): [] {
+  items.insert(disclose(item));
+}

@@ -1,0 +1,28 @@
+pragma language_version 0.28;
+import CompactStandardLibrary;
+export ledger counter: Uint<64>;
+export ledger commitments: MerkleTree<10, Field>;
+export enum Choice { left, right }
+export struct Leaf {
+  owner: Bytes<2>;
+  amount: Uint<64>;
+  active: Boolean;
+  optional: Maybe<Field>;
+  pair: Vector<2, Field>;
+  choice: Choice;
+}
+export ledger records: MerkleTree<10, Leaf>;
+export ledger tuples: MerkleTree<10, [Boolean, Uint<8>]>;
+export ledger integers: MerkleTree<10, Uint<64>>;
+export ledger choices: MerkleTree<10, Choice>;
+witness privateValue(): Field;
+constructor() { counter = 1; }
+export circuit set(value: Uint<64>): [] { counter = disclose(value); }
+export circuit insert(value: Field): [] { commitments.insert(disclose(value)); }
+export circuit needsWitness(): [] { commitments.insert(disclose(privateValue())); }
+export circuit insertComposite(leaf: Leaf, tuple: [Boolean, Uint<8>], integer: Uint<64>, choice: Choice): [] {
+  records.insert(disclose(leaf));
+  tuples.insert(disclose(tuple));
+  integers.insert(disclose(integer));
+  choices.insert(disclose(choice));
+}

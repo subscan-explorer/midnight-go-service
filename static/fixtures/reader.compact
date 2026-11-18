@@ -1,0 +1,4 @@
+pragma language_version >= 0.16 && <= 0.27;
+import CompactStandardLibrary;
+export ledger counter: Uint<64>;
+constructor() { counter = 1; }

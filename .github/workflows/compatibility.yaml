@@ -1,0 +1,56 @@
+name: Compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+concurrency:
+  group: compatibility-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go version
+      - name: Validate Docker dependency lockfile
+        run: npx --yes yarn@1.22.22 install --frozen-lockfile --ignore-scripts --non-interactive
+      - run: npm ci
+      - name: Install regression compilers
+        run: |
+          sh compact-installer.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/compact" update 0.29.0
+          "$HOME/.local/bin/compact" update 0.35.0
+          "$HOME/.local/bin/compact" update 0.36.0
+          "$HOME/.local/bin/compact" update 0.31.1
+      - run: npm run test:state
+      - run: go test -mod=mod -v ./...
+        env:
+          RUN_COMPACT_035_TESTS: "1"
+          RUN_COMPACT_036_TESTS: "1"
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Exercise HTTP client cancellation through the Go and Node reader
+        run: |
+          go build -o e2e/.midnight-server ./cmd
+          go version -m e2e/.midnight-server
+          node --test e2e/http-cancellation.test.mjs e2e/preprod-rpc.test.mjs

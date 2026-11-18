@@ -1,0 +1,5 @@
+pragma language_version 0.28;
+import CompactStandardLibrary;
+export ledger counter: Uint<64>;
+constructor() { counter = 1; }
+export circuit set(value: Uint<64>): [] { counter = disclose(value); }

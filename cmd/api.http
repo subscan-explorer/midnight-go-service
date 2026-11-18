@@ -1,0 +1,40 @@
+### verify contract
+POST http://127.0.0.1:8080/verify
+Content-Type: application/json
+
+{
+  "contract_addr": "0xfff4032e6e17aeb6525ce2db371d6cb54fd1d465755e309194a92840e125d079",
+  "source_code": "pragma language_version >= 0.16 && <= 0.19;\n\nimport CompactStandardLibrary;\n\nenum State {\n  VACANT,\n  OCCUPIED\n}\n \nstruct NumberAnd {\n  num: Uint<32>;\n  item: Uint<32>;\n}\n\nexport ledger state: State;\n\nexport ledger message: Maybe<Opaque<\"string\">>;\n\nexport ledger sequence: Counter;\n\nexport ledger owner: Bytes<32>;\n\nexport ledger items: MerkleTree<10, Field>;\n\nconstructor() {\n  state = State.VACANT;\n  message = none<Opaque<\"string\">>();\n  sequence.increment(1);\n}\n\nwitness localSecretKey(): Bytes<32>;\n\nexport circuit post(newMessage: Opaque<\"string\">): [] {\n  assert(state == State.VACANT, \"Attempted to post to an occupied board\");\n  owner = disclose(publicKey(localSecretKey(), sequence as Field as Bytes<32>));\n  message = disclose(some<Opaque<\"string\">>(newMessage));\n  state = State.OCCUPIED;\n}\n\nexport circuit takeDown(): Opaque<\"string\"> {\n  assert(state == State.OCCUPIED, \"Attempted to take down post from an empty board\");\n  assert(owner == publicKey(localSecretKey(), sequence as Field as Bytes<32>), \"Attempted to take down post, but not the current owner\");\n  const formerMsg = message.value;\n  state = State.VACANT;\n  sequence.increment(1);\n  message = none<Opaque<\"string\">>();\n  return formerMsg;\n}\n\nexport circuit publicKey(sk: Bytes<32>, sequence: Bytes<32>): Bytes<32> {\n  return persistentHash<Vector<3, Bytes<32>>>([pad(32, \"bboard:pk:\"), sequence, sk]);\n}",
+  "compiler_version": "0.29.0",
+  "source_type": "single_file",
+  "verification_keys": {
+    "takeDown": "20051ab2c1e08919f88719a4b93d11da",
+    "post": "809acf281892fc080b94b35c8bd57f2d"
+  }
+}
+
+
+### contract state
+GET http://127.0.0.1:8080/contract/state?
+    contract_addr=0x0202007f4931e5944402a8f27f45760ad56942a7c2e7c6241d7d0d4d788683de07f1fb
+
+
+### contract state with no verification
+GET http://127.0.0.1:8080/contract/state?
+    contract_addr=0xffdce702795c5744b1561d69332aba9b69249207bf7fd20f122cdea436019a0d&network_id=preprod
+
+
+### verify contract multiple file
+POST http://127.0.0.1:8080/verify
+Content-Type: application/json
+
+{
+  "contract_addr": "0x0d5d83680592075ac2292f08374c9d3dde2bfef1c3b70e06e8a48f0a6872926e",
+  "source_code": "{\n  \"contracts\":{\n    \"count.compact\":\"// This file is part of midnightntwrk/example-counter.\\n// Copyright (C) 2025 Midnight Foundation\\n// SPDX-License-Identifier: Apache-2.0\\n// Licensed under the Apache License, Version 2.0 (the \\\"License\\\");\\n// You may not use this file except in compliance with the License.\\n// You may obtain a copy of the License at\\n//\\n// http://www.apache.org/licenses/LICENSE-2.0\\n//\\n// Unless required by applicable law or agreed to in writing, software\\n// distributed under the License is distributed on an \\\"AS IS\\\" BASIS,\\n// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\\n// See the License for the specific language governing permissions and\\n// limitations under the License.\\n\\npragma language_version >= 0.20;\\n\\nimport CompactStandardLibrary;\\n\\n// public state\\nexport ledger round: Counter;\\n\\n// transition function changing public state\\nexport circuit increment(): [] {\\n  round.increment(1);\\n}\\n\"\n  },\n  \"entry-file\":\"count.compact\"\n}\n",
+  "compiler_version": "0.29.0",
+  "source_type": "multi_file",
+  "verification_keys": {
+    "increment": "8762d525366e6599ecc9599f6953bddb"
+  },
+  "network_id": "preprod"
+}
