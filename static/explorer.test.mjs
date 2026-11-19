@@ -172,3 +172,25 @@ test('real Compact artifacts build a ledger 9 call and check native Merkle paths
   await assert.rejects(preparePublicCall(request, dir), /unsupported_runtime/);
   assert.equal(requests.length, requestCount, 'legacy runtime is rejected before network access');
 });
+
+test('public ledger uses fixed queries, exact transactions and paginated contract history', async t => {
+  const id = 'ab'.repeat(32);
+  const tx = { __typename: 'RegularTransaction', hash: id, zswapLedgerEvents: [] };
+  const result = { transactions: [tx] };
+  let request;
+  t.mock.method(globalThis, 'fetch', async (_, init) => {
+    request = JSON.parse(init.body);
+    return Response.json({ data: result });
+  });
+  const params = { contract: '0x' + id, transaction_hash: '0x' + id };
+  assert.deepEqual(await explore({ ...params, operation: 'transaction_zswap' }), { transactions: [tx] });
+  assert.deepEqual(request.variables, { offset: { hash: id } });
+  assert.match(request.query, /zswapLedgerEvents/);
+  assert.deepEqual(await explore({ ...params, operation: 'transaction_events' }), { transactions: [tx] });
+  assert.match(request.query, /contractEvents/);
+  result.transactions = [];
+  await assert.rejects(explore({ ...params, operation: 'transaction_events' }), /transaction_snapshot_unavailable/);
+  result.contractEvents = [];
+  assert.deepEqual(await explore({ contract: params.contract, operation: 'contract_events', page: 2 }), { contractEvents: [] });
+  assert.deepEqual(request.variables, { filter: { contractAddress: id }, offset: 40, limit: 21 });
+});

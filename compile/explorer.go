@@ -13,6 +13,7 @@ import (
 // ExplorerRequest contains only public circuit parameters and wallet public keys.
 // Neither private witnesses nor wallet signing material are accepted.
 type ExplorerRequest struct {
+	Page                    int             `json:"page,omitempty"`
 	Operation               string          `json:"operation"`
 	Contract                string          `json:"contract"`
 	NetworkID               string          `json:"network_id"`
@@ -54,7 +55,11 @@ func (r ExplorerRequest) Validate() error {
 		if !explorerAddress.MatchString(r.TransactionHash) || (r.PreviousTransactionHash != "" && !explorerAddress.MatchString(r.PreviousTransactionHash)) {
 			return fmt.Errorf("invalid transaction snapshot")
 		}
-	case "proof", "deployment":
+	case "contract_events":
+		if r.Page < 0 || r.Page > 2147483647/20 {
+			return fmt.Errorf("invalid event page")
+		}
+	case "proof", "deployment", "transaction_events", "transaction_zswap":
 		if !explorerAddress.MatchString(r.TransactionHash) {
 			return fmt.Errorf("invalid transaction hash")
 		}
@@ -107,9 +112,14 @@ func (c *Config) Explore(ctx context.Context, request ExplorerRequest) (json.Raw
 		return nil, fmt.Errorf("validate explorer request: %w", err)
 	}
 	request.Contract = strings.ToLower(request.Contract)
-	request.Verified = c.IsContractVerified(ctx, request.Contract)
-	if !request.Verified && request.Operation != "inspect" && request.Operation != "proof" && request.Operation != "deployment" {
-		return nil, fmt.Errorf("verified contract artifacts required")
+	switch request.Operation {
+	case "proof", "transaction_events", "transaction_zswap", "contract_events":
+		request.Verified = false // Public ledger reads are independent of local contract artifacts.
+	default:
+		request.Verified = c.IsContractVerified(ctx, request.Contract)
+		if !request.Verified && request.Operation != "inspect" && request.Operation != "deployment" {
+			return nil, fmt.Errorf("verified contract artifacts required")
+		}
 	}
 	encoded, err := json.Marshal(request)
 	if err != nil {

@@ -80,6 +80,10 @@ export async function explore(request, directory) {
     const { deploymentBytecode } = await import('./transaction-proof.mjs');
     return deploymentBytecode(request.transaction_hash, request.contract);
   }
+  if (['transaction_events', 'transaction_zswap', 'contract_events'].includes(request.operation)) {
+    const { publicLedger } = await import('./public-ledger.mjs');
+    return publicLedger(request);
+  }
   if (request.operation === 'proof') {
     const { transactionProof } = await import('./transaction-proof.mjs');
     return transactionProof(request.transaction_hash);
