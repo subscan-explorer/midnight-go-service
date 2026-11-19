@@ -47,6 +47,7 @@ jobs:
       - run: npm run test:state
       - run: go test -mod=mod -v ./...
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           RUN_COMPACT_035_TESTS: "1"
           RUN_COMPACT_036_TESTS: "1"
       - run: go build ./...
@@ -60,7 +61,10 @@ jobs:
   publish:
     name: Publish service image
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private
+    if: >-
+      github.repository == 'subscan-explorer/midnight-go-service' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
