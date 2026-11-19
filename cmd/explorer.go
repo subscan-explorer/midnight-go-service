@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"midnight-go-sdk/compile"
+	"midnight-go-sdk/config"
 	"midnight-go-sdk/logger"
 	"net/http"
 )
@@ -46,6 +47,15 @@ func explorerHandler(c compile.ICompile) http.HandlerFunc {
 		if !ok {
 			requestError(w, r, 503, "unavailable", "Explorer operations unavailable")
 			return
+		}
+		usesIndexer := request.TransactionHash != "" || request.Operation == "prepare" || request.Operation == "contract_events"
+		if conf.NetworkConf != nil && usesIndexer {
+			network, err := config.WithExplorerIndexer(conf.NetworkConf, request.Operation == "prepare")
+			if err != nil {
+				requestError(w, r, 503, "indexer_unavailable", "Indexer configuration unavailable")
+				return
+			}
+			conf.NetworkConf = network // resolveCompileByNetwork returned a per-request config
 		}
 		result, err := conf.Explore(r.Context(), request)
 		if err != nil {

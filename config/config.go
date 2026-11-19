@@ -108,14 +108,6 @@ func NewNetworkConfigByID(networkID string) (*NetworkConfig, error) {
 		return fallback
 	}
 	cfg := &NetworkConfig{Indexer: resolve("INDEXER_RPC", endpoints.indexer), IndexerWS: resolve("INDEXER_WS", endpoints.indexerWS), Node: resolve("RPC_NODE", endpoints.node), NetworkID: id}
-	projectIDKey := prefix + "BLOCKFROST_PROJECT_ID"
-	projectID := strings.TrimSpace(os.Getenv(projectIDKey))
-	if projectID == "" && id == MainNet {
-		// Existing shared helpers already use this key for Mainnet, even when
-		// NETWORK_ID is Preview. Never apply it to a Preprod request.
-		projectIDKey = "BLOCKFROST_PROJECT_ID"
-		projectID = strings.TrimSpace(os.Getenv(projectIDKey))
-	}
 	validate := []struct {
 		name  string
 		value *string
@@ -125,36 +117,76 @@ func NewNetworkConfigByID(networkID string) (*NetworkConfig, error) {
 		validate = validate[2:]
 	}
 	for _, endpoint := range validate {
-		u, err := url.Parse(*endpoint.value)
-		if err != nil || u.Hostname() == "" {
-			return nil, fmt.Errorf("invalid %s endpoint for %s", endpoint.name, id)
+		resolved, err := networkEndpoint(id, endpoint.name, *endpoint.value)
+		if err != nil {
+			return nil, err
 		}
-		if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "ws" && u.Scheme != "wss" {
-			return nil, fmt.Errorf("unsupported %s endpoint scheme for %s", endpoint.name, id)
-		}
-		var providerNetwork NetworkID
-		switch u.Hostname() {
-		case "midnight-mainnet.blockfrost.io", "rpc.midnight-mainnet.blockfrost.io":
-			providerNetwork = MainNet
-		case "midnight-preprod.blockfrost.io", "rpc.midnight-preprod.blockfrost.io":
-			providerNetwork = Preprod
-		}
-		if providerNetwork != "" {
-			if providerNetwork != id {
-				return nil, fmt.Errorf("Blockfrost %s endpoint cannot serve network %s", providerNetwork, id)
-			}
-			q := u.Query()
-			if q.Get("project_id") == "" {
-				if projectID == "" {
-					return nil, fmt.Errorf("%s is required for %s Blockfrost endpoints", projectIDKey, id)
-				}
-				q.Set("project_id", projectID)
-			}
-			u.RawQuery = q.Encode()
-			*endpoint.value = u.String()
-		}
+		*endpoint.value = resolved
 	}
 	return cfg, nil
+}
+
+// WithExplorerIndexer resolves only the indexer transports used by this operation.
+func WithExplorerIndexer(c Config, websocket bool) (Config, error) {
+	if c == nil || (c.GetNetworkID() != MainNet && c.GetNetworkID() != Preprod) {
+		return c, nil
+	}
+	id := c.GetNetworkID()
+	indexer, err := networkEndpoint(id, "indexer", c.GetIndexer())
+	if err != nil {
+		return nil, err
+	}
+	ws := c.GetIndexerWS()
+	if websocket {
+		ws, err = networkEndpoint(id, "indexer websocket", ws)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &NetworkConfig{NetworkID: id, Node: c.GetNode(), Indexer: indexer, IndexerWS: ws}, nil
+}
+
+func networkEndpoint(id NetworkID, name, raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return "", fmt.Errorf("invalid %s endpoint for %s", name, id)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "ws" && u.Scheme != "wss" {
+		return "", fmt.Errorf("unsupported %s endpoint scheme for %s", name, id)
+	}
+	var providerNetwork NetworkID
+	switch u.Hostname() {
+	case "midnight-mainnet.blockfrost.io", "rpc.midnight-mainnet.blockfrost.io":
+		providerNetwork = MainNet
+	case "midnight-preprod.blockfrost.io", "rpc.midnight-preprod.blockfrost.io":
+		providerNetwork = Preprod
+	}
+	if providerNetwork != "" {
+		if providerNetwork != id {
+			return "", fmt.Errorf("Blockfrost %s endpoint cannot serve network %s", providerNetwork, id)
+		}
+		if u.Scheme != "https" && u.Scheme != "wss" {
+			return "", fmt.Errorf("insecure Blockfrost %s endpoint", name)
+		}
+		q := u.Query()
+		if q.Get("project_id") == "" {
+			projectIDKey := "MIDNIGHT_" + strings.ToUpper(string(id)) + "_BLOCKFROST_PROJECT_ID"
+			projectID := strings.TrimSpace(os.Getenv(projectIDKey))
+			if projectID == "" && id == MainNet {
+				// Existing shared helpers already use this key for Mainnet, even when
+				// NETWORK_ID is Preview. Never apply it to a Preprod request.
+				projectIDKey = "BLOCKFROST_PROJECT_ID"
+				projectID = strings.TrimSpace(os.Getenv(projectIDKey))
+			}
+			if projectID == "" {
+				return "", fmt.Errorf("%s is required for %s Blockfrost endpoints", projectIDKey, id)
+			}
+			q.Set("project_id", projectID)
+		}
+		u.RawQuery = q.Encode()
+		return u.String(), nil
+	}
+	return raw, nil
 }
 
 // GetLogDir returns the log directory

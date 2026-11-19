@@ -1,4 +1,4 @@
-import { boundedJSON } from './state.mjs';
+import { indexedTransaction } from './public-ledger.mjs';
 
 // Count proof objects, never transaction labels, amounts, witnesses or preimages.
 export function proofPresence(transaction) {
@@ -20,17 +20,7 @@ export function proofPresence(transaction) {
 }
 
 async function readTransaction(hash) {
-  const response = await fetch(process.env.INDEXER_RPC, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    signal: AbortSignal.timeout(Number(process.env.MIDNIGHT_STATE_TIMEOUT_MS) || 45000),
-    body: JSON.stringify({ query: 'query ExplorerProof($offset: TransactionOffset!) { transactions(offset: $offset) { hash raw protocolVersion } }',
-      variables: { offset: { hash: hash.replace(/^0x/, '') } } }),
-  });
-  if (!response.ok) throw new Error('transaction_snapshot_unavailable');
-  const result = await boundedJSON(response, Number(process.env.MIDNIGHT_INDEXER_RESPONSE_LIMIT_BYTES) || 32 << 20);
-  const records = result.data?.transactions;
-  if (result.errors?.length || !Array.isArray(records) || records.length !== 1 || records[0]?.hash?.toLowerCase() !== hash.replace(/^0x/, '').toLowerCase()) throw new Error('transaction_snapshot_unavailable');
-  const record = records[0];
+  const record = await indexedTransaction(hash, 'hash raw protocolVersion');
   if (typeof record.raw !== 'string' || !/^(?:[a-f0-9]{2})+$/i.test(record.raw)) throw new Error('transaction_snapshot_unavailable');
   const { protocolVersionToLedger } = await import('@midnight-ntwrk/midnight-js-protocol/version');
   const era = protocolVersionToLedger(record.protocolVersion);

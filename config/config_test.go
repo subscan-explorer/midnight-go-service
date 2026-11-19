@@ -186,3 +186,32 @@ func clearNetworkEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestExplorerAuthenticatesOnlySelectedIndexer(t *testing.T) {
+	clearNetworkEnv(t)
+	t.Setenv("BLOCKFROST_PROJECT_ID", "test-main")
+	t.Setenv("MIDNIGHT_PREPROD_BLOCKFROST_PROJECT_ID", "test-preprod")
+	for _, tc := range []struct{ network, token string }{{"mainnet", "test-main"}, {"preprod", "test-preprod"}} {
+		native, err := NewNetworkConfigByID(tc.network)
+		require.NoError(t, err)
+		conf, err := WithExplorerIndexer(native, true)
+		require.NoError(t, err)
+		for _, endpoint := range []string{conf.GetIndexer(), conf.GetIndexerWS()} {
+			u, err := url.Parse(endpoint)
+			require.NoError(t, err)
+			require.Equal(t, tc.token, u.Query().Get("project_id"))
+		}
+		require.NotContains(t, native.GetIndexer(), "project_id")
+	}
+	t.Setenv("MIDNIGHT_MAINNET_INDEXER_RPC", "https://midnight-preprod.blockfrost.io/api/v0")
+	native, err := NewNetworkConfigByID("mainnet")
+	require.NoError(t, err)
+	_, err = WithExplorerIndexer(native, false)
+	require.ErrorContains(t, err, "cannot serve network")
+	t.Setenv("MIDNIGHT_MAINNET_INDEXER_RPC", "https://custom.example/graphql")
+	native, err = NewNetworkConfigByID("mainnet")
+	require.NoError(t, err)
+	conf, err := WithExplorerIndexer(native, false)
+	require.NoError(t, err)
+	require.Equal(t, "https://custom.example/graphql", conf.GetIndexer())
+}
