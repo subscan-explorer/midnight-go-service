@@ -60,7 +60,10 @@ jobs:
   publish:
     name: Publish service image
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private
+    if: >-
+      github.repository == 'subscan-explorer/midnight-go-service' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
