@@ -47,6 +47,7 @@ jobs:
       - run: npm run test:state
       - run: go test -mod=mod -v ./...
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           RUN_COMPACT_035_TESTS: "1"
           RUN_COMPACT_036_TESTS: "1"
       - run: go build ./...
