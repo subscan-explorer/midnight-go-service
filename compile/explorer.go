@@ -1,7 +1,9 @@
 package compile
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -31,6 +33,9 @@ type ExplorerRequest struct {
 	Proof                   json.RawMessage `json:"proof,omitempty"`
 	Verified                bool            `json:"verified"`
 	TransactionHash         string          `json:"transaction_hash,omitempty"`
+	BlockHash               string          `json:"block_hash,omitempty"`
+	Outcome                 string          `json:"outcome,omitempty"`
+	TransactionBytes        string          `json:"transaction_bytes,omitempty"`
 	PreviousTransactionHash string          `json:"previous_transaction_hash,omitempty"`
 }
 
@@ -47,6 +52,19 @@ func (r ExplorerRequest) Validate() error {
 		return fmt.Errorf("provide one block or transaction snapshot, not both")
 	}
 	switch r.Operation {
+	case "index_contract_events", "executed_contract_events":
+		if !explorerAddress.MatchString(r.BlockHash) || !explorerAddress.MatchString(r.TransactionHash) ||
+			(r.Outcome != "success" && r.Outcome != "partial_success" && r.Outcome != "failure" && r.Outcome != "unknown") {
+			return fmt.Errorf("invalid transaction execution inputs")
+		}
+		if r.TransactionBytes != "" {
+			if !strings.HasPrefix(r.TransactionBytes, "0x") || len(r.TransactionBytes) > (12<<20) {
+				return fmt.Errorf("invalid transaction bytes")
+			}
+			if _, err := hex.DecodeString(r.TransactionBytes[2:]); err != nil {
+				return fmt.Errorf("invalid transaction bytes: %w", err)
+			}
+		}
 	case "inspect":
 		if r.TransactionHash != "" && !explorerAddress.MatchString(r.TransactionHash) {
 			return fmt.Errorf("invalid deployment transaction")
@@ -110,6 +128,14 @@ func (r ExplorerRequest) Validate() error {
 func (c *Config) Explore(ctx context.Context, request ExplorerRequest) (json.RawMessage, error) {
 	if err := request.Validate(); err != nil {
 		return nil, fmt.Errorf("validate explorer request: %w", err)
+	}
+	if request.Operation == "index_contract_events" || request.Operation == "executed_contract_events" {
+		encoded, err := json.Marshal(request)
+		if err != nil {
+			return nil, fmt.Errorf("encode index request: %w", err)
+		}
+		// Raw finalized transactions can exceed the operating system argv limit.
+		return c.execTsInput(ctx, bytes.NewReader(encoded), filepath.Join(c.StaticDir, "index-contract-events.mjs"))
 	}
 	request.Contract = strings.ToLower(request.Contract)
 	switch request.Operation {

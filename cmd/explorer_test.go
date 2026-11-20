@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/stretchr/testify/require"
@@ -8,6 +9,7 @@ import (
 	"midnight-go-sdk/config"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -96,4 +98,36 @@ func TestExplorerRejectsMalformedHTTPBeforeIO(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler(response, httptest.NewRequest("GET", "/contract/explorer", nil))
 	require.Equal(t, 405, response.Code)
+}
+
+func TestExplorerOfflineEventHTTPIntegration(t *testing.T) {
+	cases, err := os.ReadFile("../static/fixtures/indexed-contract-events.json")
+	require.NoError(t, err)
+	var rows []struct {
+		Hash, Raw string
+		BlockHash string `json:"block_hash"`
+		Logs      []json.RawMessage
+	}
+	require.NoError(t, json.Unmarshal(cases, &rows))
+	offline := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("unexpected indexer or node request")
+		http.Error(w, "unexpected", 500)
+	}))
+	defer offline.Close()
+	handler := explorerHandler(&compile.Config{StaticDir: "../static", ArtifactDir: t.TempDir(), NetworkConf: &config.NetworkConfig{NetworkID: config.Preview, Indexer: offline.URL, Node: offline.URL}})
+	for _, row := range rows {
+		body, err := json.Marshal(map[string]string{"contract": "0x" + strings.Repeat("0", 64), "operation": "index_contract_events", "block_hash": row.BlockHash, "transaction_hash": row.Hash, "transaction_bytes": row.Raw, "outcome": "success"})
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest(http.MethodPost, "/contract/explorer", bytes.NewReader(body)))
+		require.Equal(t, 200, w.Code, w.Body.String())
+		var result struct {
+			Hash, Source string
+			Events       []json.RawMessage
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+		require.Equal(t, row.Hash, result.Hash)
+		require.Equal(t, "local", result.Source)
+		require.Len(t, result.Events, len(row.Logs))
+	}
 }

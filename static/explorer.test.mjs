@@ -194,3 +194,58 @@ test('public ledger uses fixed queries, exact transactions and paginated contrac
   assert.deepEqual(await explore({ contract: params.contract, operation: 'contract_events', page: 2 }), { contractEvents: [] });
   assert.deepEqual(request.variables, { filter: { contractAddress: id }, offset: 40, limit: 21 });
 });
+
+test('indexes finalized Mainnet and Preprod transaction fixtures without network access', async t => {
+  const { readFile } = await import('node:fs/promises');
+  const { indexContractEvents } = await import('./index-contract-events.mjs');
+  const cases = JSON.parse(await readFile(new URL('./fixtures/indexed-contract-events.json', import.meta.url), 'utf8'));
+  const fetch = t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected network read'); });
+  for (const c of cases) {
+    const request = { operation: 'index_contract_events', transaction_hash: c.hash, transaction_bytes: c.raw, outcome: 'success' };
+    assert.deepEqual(await indexContractEvents(request), {hash: c.hash, source: 'local', events: c.logs});
+    assert.deepEqual(await indexContractEvents({...request, outcome: 'failure'}), {hash: c.hash, source: 'local', events: []});
+    if (c.logs.length) assert.deepEqual(await indexContractEvents({...request, outcome: 'partial_success'}), {hash: c.hash, source: 'pending'});
+  }
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('keeps unattributed logs on the transaction and paginates exact applied events', async t => {
+  const { executedContractEvents } = await import('./public-ledger.mjs');
+  const hash = '01'.repeat(32), block = '02'.repeat(32), address = '03'.repeat(32);
+  let n = 0;
+  let extraId = 2;
+  t.mock.method(globalThis, 'fetch', async (_, init) => {
+    const {query, variables} = JSON.parse(init.body);
+    n++;
+    if (query.includes('transactions(offset:')) return Response.json({data: {transactions: [{hash, __typename:'RegularTransaction', block: {hash: block},
+      contractActions: [{address, contractEvents:[{id:1}, {id:2}]}, {address, contractEvents:[{id:extraId}]}]}]}});
+    assert.deepEqual(variables.filter, {contractAddress:address, transactionHash:hash});
+    const count = variables.offset === 0 ? 100 : 1;
+    return Response.json({data: {contractEvents: Array.from({length:count}, (_, i) => ({
+      id:variables.offset+i+1, __typename:'PausedEvent', contractAddress:address, raw:'aabb', transaction:{hash}
+    }))}});
+  });
+  const events = await executedContractEvents('0x'+hash, '0x'+block);
+  assert.equal(n,3);
+  assert.equal(events.length,101);
+  assert.equal(events[0].call_index,0);
+  assert.equal(events[1].call_index,null);
+  extraId = 102;
+  await assert.rejects(executedContractEvents('0x'+hash, '0x'+block), /transaction_snapshot_unavailable/);
+  assert.equal(events[100].call_index,null);
+  await assert.rejects(executedContractEvents('0x'+hash, '0x'+address), /transaction_snapshot_unavailable/);
+});
+
+test('historical Ledger 8 call-free receipts are resolved offline and pinned to their hash', async t => {
+  const legacy = await import('@midnight-ntwrk/midnight-js-protocol/v8');
+  const { indexContractEvents } = await import('./index-contract-events.mjs');
+  const intent = legacy.Intent.new(new Date(Date.now() + 300000)).addDeploy(new legacy.ContractDeploy(new legacy.ContractState()));
+  const tx = legacy.Transaction.fromParts('preview', undefined, undefined, intent).mockProve();
+  const hash = '0x' + tx.transactionHash();
+  const request = { operation: 'index_contract_events', outcome: 'success', transaction_hash: hash,
+    transaction_bytes: '0x' + Buffer.from(tx.serialize()).toString('hex') };
+  const fetch = t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected external read'); });
+  assert.deepEqual(await indexContractEvents(request), {hash, source: 'local', events: []});
+  await assert.rejects(indexContractEvents({...request, transaction_hash: '0x' + 'ff'.repeat(32)}), /transaction_snapshot_unavailable/);
+  assert.equal(fetch.mock.callCount(), 0);
+});

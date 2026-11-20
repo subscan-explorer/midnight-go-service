@@ -18,10 +18,14 @@ func explorerHandler(c compile.ICompile) http.HandlerFunc {
 			return
 		}
 		var request compile.ExplorerRequest
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, (12<<20)+4096))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&request); err != nil {
 			requestError(w, r, 400, "invalid_request", "Invalid explorer request")
+			return
+		}
+		if request.Operation != "index_contract_events" && decoder.InputOffset() > 64<<10 {
+			requestError(w, r, 400, "invalid_request", "Explorer request too large")
 			return
 		}
 		var trailing interface{}
@@ -48,7 +52,7 @@ func explorerHandler(c compile.ICompile) http.HandlerFunc {
 			requestError(w, r, 503, "unavailable", "Explorer operations unavailable")
 			return
 		}
-		usesIndexer := request.TransactionHash != "" || request.Operation == "prepare" || request.Operation == "contract_events"
+		usesIndexer := request.Operation != "index_contract_events" && (request.TransactionHash != "" || request.Operation == "prepare" || request.Operation == "contract_events")
 		if conf.NetworkConf != nil && usesIndexer {
 			network, err := config.WithExplorerIndexer(conf.NetworkConf, request.Operation == "prepare")
 			if err != nil {
