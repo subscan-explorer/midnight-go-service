@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { publicArgument, readCompilerInfo } from './public-arguments.mjs';
 import { explore, preparePublicCall, publicStateChanges } from './explorer.mjs';
 import { merkleRoots } from './merkle.mjs';
+import { decodeMiscEventFields } from './local-contract-events.mjs';
 import { proofPresence, transactionProof, deploymentBytecode } from './transaction-proof.mjs';
 
 test('proof inspection deserializes native transactions and rejects a different snapshot', async t => {
@@ -193,6 +194,26 @@ test('public ledger uses fixed queries, exact transactions and paginated contrac
   result.contractEvents = [];
   assert.deepEqual(await explore({ contract: params.contract, operation: 'contract_events', page: 2 }), { contractEvents: [] });
   assert.deepEqual(request.variables, { filter: { contractAddress: id }, offset: 40, limit: 21 });
+});
+
+test('misc event fields require a complete name before restoring trailing payload zeros', () => {
+  const decode = value => decodeMiscEventFields({
+    tag: 'cell',
+    content: { value: [value], alignment: [{ tag: 'atom', value: { tag: 'bytes', length: 288 } }] },
+  });
+  // These three short values are the distinct log atoms from five finalized Preview transactions.
+  for (const text of ['reserves:attested', 'app:account-opened', 'nightfun:round:v1']) {
+    assert.equal(decode(Buffer.from(text)), null, text);
+  }
+  assert.equal(decode(Buffer.alloc(31, 0x61)), null);
+  assert.equal(decode(Buffer.alloc(289, 0x61)), null);
+  const name = Buffer.alloc(32, 0x61);
+  for (const payloadSize of [0, 1, 256]) {
+    const data = Buffer.concat([name, Buffer.alloc(payloadSize, 0x62)]);
+    assert.deepEqual(decode(data), {
+      name: '61'.repeat(32), payload: '62'.repeat(payloadSize) + '00'.repeat(256 - payloadSize),
+    });
+  }
 });
 
 test('indexes finalized Mainnet and Preprod transaction fixtures without network access', async t => {
