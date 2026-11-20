@@ -213,11 +213,12 @@ test('keeps unattributed logs on the transaction and paginates exact applied eve
   const { executedContractEvents } = await import('./public-ledger.mjs');
   const hash = '01'.repeat(32), block = '02'.repeat(32), address = '03'.repeat(32);
   let n = 0;
+  let extraId = 2;
   t.mock.method(globalThis, 'fetch', async (_, init) => {
     const {query, variables} = JSON.parse(init.body);
     n++;
     if (query.includes('transactions(offset:')) return Response.json({data: {transactions: [{hash, __typename:'RegularTransaction', block: {hash: block},
-      contractActions: [{address, contractEvents:[{id:1}]}, {address, contractEvents:[]}]}]}});
+      contractActions: [{address, contractEvents:[{id:1}, {id:2}]}, {address, contractEvents:[{id:extraId}]}]}]}});
     assert.deepEqual(variables.filter, {contractAddress:address, transactionHash:hash});
     const count = variables.offset === 0 ? 100 : 1;
     return Response.json({data: {contractEvents: Array.from({length:count}, (_, i) => ({
@@ -228,6 +229,9 @@ test('keeps unattributed logs on the transaction and paginates exact applied eve
   assert.equal(n,3);
   assert.equal(events.length,101);
   assert.equal(events[0].call_index,0);
+  assert.equal(events[1].call_index,null);
+  extraId = 102;
+  await assert.rejects(executedContractEvents('0x'+hash, '0x'+block), /transaction_snapshot_unavailable/);
   assert.equal(events[100].call_index,null);
   await assert.rejects(executedContractEvents('0x'+hash, '0x'+address), /transaction_snapshot_unavailable/);
 });

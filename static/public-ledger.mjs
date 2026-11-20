@@ -45,7 +45,9 @@ export async function executedContractEvents(hash, blockHash) {
   const addresses = new Set(tx.contractActions.flatMap(a => a.address ? [a.address] : []));
   const attributed = new Map();
   for (const [index, action] of tx.contractActions.entries()) {
-    for (const event of action.contractEvents ?? []) attributed.set(event.id, index);
+    for (const event of action.contractEvents ?? []) {
+      attributed.set(event.id, attributed.has(event.id) ? null : index);
+    }
   }
   const events = [];
   for (const address of addresses) {
@@ -63,6 +65,9 @@ export async function executedContractEvents(hash, blockHash) {
     }
   }
   events.sort((a, b) => a.id - b.id);
-  if (events.some((e, i) => i && events[i - 1].id === e.id)) throw new Error('transaction_snapshot_unavailable');
+  const seen = new Set(events.map(event => event.id));
+  if (seen.size !== events.length || [...attributed.keys()].some(id => !seen.has(id))) {
+    throw new Error('transaction_snapshot_unavailable');
+  }
   return events;
 }
