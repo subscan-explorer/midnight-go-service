@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"midnight-go-sdk/logger"
 	"os"
@@ -76,7 +77,11 @@ func (c *Config) ExecTsScript(ctx context.Context, scriptPath string, args ...st
 	return string(output), err
 }
 
-func (c *Config) execTsBytes(ctx context.Context, scriptPath string, args ...string) (output []byte, resultErr error) {
+func (c *Config) execTsBytes(ctx context.Context, scriptPath string, args ...string) ([]byte, error) {
+	return c.execTsInput(ctx, nil, scriptPath, args...)
+}
+
+func (c *Config) execTsInput(ctx context.Context, input io.Reader, scriptPath string, args ...string) (output []byte, resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -108,6 +113,7 @@ func (c *Config) execTsBytes(ctx context.Context, scriptPath string, args ...str
 	cmdArgs = append(cmdArgs, scriptPath)
 	cmdArgs = append(cmdArgs, args...)
 	cmd := commandContext(runCtx, "node", cmdArgs...)
+	cmd.Stdin = input
 	if c.NetworkConf != nil {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("MIDNIGHT_NETWORK_ID=%s", c.NetworkConf.GetNetworkID()), fmt.Sprintf("INDEXER_RPC=%s", c.NetworkConf.GetIndexer()), fmt.Sprintf("INDEXER_WS=%s", c.NetworkConf.GetIndexerWS()), fmt.Sprintf("RPC_NODE=%s", c.NetworkConf.GetNode()), "TS_NODE_TRANSPILE_ONLY=true", `TS_NODE_COMPILER_OPTIONS={"module":"NodeNext","moduleResolution":"NodeNext"}`)
 	}

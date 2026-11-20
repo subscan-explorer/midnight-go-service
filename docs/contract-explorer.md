@@ -139,3 +139,19 @@ The scan API translates these into fixed user-facing messages. No private
 witnesses, signing keys or wallet access are needed. Hashes may still identify a
 public commitment; a low-entropy preimage is not made confidential merely by
 hashing it. Users must not send private leaf values to the legacy `leaf` API.
+
+### Finalized event indexing
+
+The Subscan worker calls `POST /contract/explorer` inside the existing service authentication
+boundary. For `index_contract_events` it supplies the network, contract placeholder, exact
+`transaction_hash`, canonical `block_hash`, pallet `outcome` and optional hex `transaction_bytes`
+(up to 12 MiB of hex). This operation runs only the local Ledger 9 decoder and returns
+`{hash, source: "local", events}` or `{hash, source: "pending"}`. Local Misc events include their
+exact fixed-width name and payload. The optional integer `call_index` identifies a unique action.
+
+For a pending result the worker calls `executed_contract_events` with the same identifiers and
+outcome, omitting the bytes. The SDK checks the transaction block, fetches each distinct called
+address in pages of 100 filtered by the exact transaction hash, and returns `source: "indexer"`
+with events ordered by indexer ID. Missing snapshots, incomplete pages and upstream errors are
+retryable. Both operations are internal to the SDK. Public Subscan callers use the existing
+`transaction_events` and `contract_events` operations.
