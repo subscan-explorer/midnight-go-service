@@ -2,10 +2,16 @@ import { ContractCall, ContractDeploy, CostModel, MaintenanceUpdate, Transaction
 
 // A missing result requests authoritative execution events. An empty array proves that no
 // call emitted a log. A transaction containing an unknown action is never classified empty.
-export function localContractEvents(raw, hash, outcome) {
+const ledger8Prefix = Buffer.from('midnight:transaction[v9](');
+
+export async function localContractEvents(raw, hash, outcome) {
+  const bytes = Buffer.from(raw, 'hex');
+  const legacy = bytes.subarray(0, ledger8Prefix.length).equals(ledger8Prefix);
+  const classes = legacy ? await import('@midnight-ntwrk/midnight-js-protocol/v8') :
+    { Transaction, ContractCall, ContractDeploy, MaintenanceUpdate };
   let tx;
   try {
-    tx = Transaction.deserialize('signature', 'proof', 'binding', Buffer.from(raw, 'hex'));
+    tx = classes.Transaction.deserialize('signature', 'proof', 'binding', bytes);
   } catch {
     return null;
   }
@@ -19,8 +25,8 @@ export function localContractEvents(raw, hash, outcome) {
   for (const intent of tx.intents.values()) {
     for (const action of intent.actions) {
       actionIndex++;
-      if (action instanceof ContractDeploy || action instanceof MaintenanceUpdate) continue;
-      if (!(action instanceof ContractCall)) return null;
+      if (action instanceof classes.ContractDeploy || action instanceof classes.MaintenanceUpdate) continue;
+      if (!(action instanceof classes.ContractCall)) return null;
       const entry = Buffer.from(action.entryPoint).toString('hex');
       const key = action.address + ':' + entry;
       calls.set(key, calls.has(key) ? null : actionIndex);
@@ -28,6 +34,8 @@ export function localContractEvents(raw, hash, outcome) {
       const fallible = action.fallibleTranscript?.program ?? [];
       if (fallible.includes('log')) return null;
       if (!guaranteed.includes('log')) continue;
+      // Ledger 8 uses untyped logs. Only the proven-empty case shares the v9 projection.
+      if (legacy) return null;
       // Preserve ledger ordering across physical and logical segments by delegating multi-call emission.
       if (outcome !== 'success' || ++emittingCalls > 1 ||
           guaranteed.some(op => typeof op === 'object' && ('branch' in op || 'jmp' in op))) return null;

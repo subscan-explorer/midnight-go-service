@@ -231,3 +231,17 @@ test('keeps unattributed logs on the transaction and paginates exact applied eve
   assert.equal(events[100].call_index,null);
   await assert.rejects(executedContractEvents('0x'+hash, '0x'+address), /transaction_snapshot_unavailable/);
 });
+
+test('historical Ledger 8 call-free receipts are resolved offline and pinned to their hash', async t => {
+  const legacy = await import('@midnight-ntwrk/midnight-js-protocol/v8');
+  const { indexContractEvents } = await import('./index-contract-events.mjs');
+  const intent = legacy.Intent.new(new Date(Date.now() + 300000)).addDeploy(new legacy.ContractDeploy(new legacy.ContractState()));
+  const tx = legacy.Transaction.fromParts('preview', undefined, undefined, intent).mockProve();
+  const hash = '0x' + tx.transactionHash();
+  const request = { operation: 'index_contract_events', outcome: 'success', transaction_hash: hash,
+    transaction_bytes: '0x' + Buffer.from(tx.serialize()).toString('hex') };
+  const fetch = t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected external read'); });
+  assert.deepEqual(await indexContractEvents(request), {hash, source: 'local', events: []});
+  await assert.rejects(indexContractEvents({...request, transaction_hash: '0x' + 'ff'.repeat(32)}), /transaction_snapshot_unavailable/);
+  assert.equal(fetch.mock.callCount(), 0);
+});

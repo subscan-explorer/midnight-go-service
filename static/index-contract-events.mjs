@@ -6,7 +6,7 @@ import { executedContractEvents } from './public-ledger.mjs';
 export async function indexContractEvents(request) {
   const hash = request.transaction_hash;
   if (request.operation === 'executed_contract_events') return { hash, source: 'indexer', events: await executedContractEvents(hash, request.block_hash) };
-  const local = request.transaction_bytes ? localContractEvents(request.transaction_bytes.slice(2), hash.slice(2), request.outcome) : null;
+  const local = request.transaction_bytes ? await localContractEvents(request.transaction_bytes.slice(2), hash.slice(2), request.outcome) : null;
   if (local !== null) return { hash, source: 'local', events: local };
   return { hash, source: 'pending' };
 }
